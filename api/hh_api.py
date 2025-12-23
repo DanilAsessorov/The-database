@@ -1,5 +1,5 @@
 import requests
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 import time
 import sys
 import os
@@ -11,41 +11,42 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 class HeadHunterAPI:
     """Класс для работы с API hh.ru."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.base_url = "https://api.hh.ru"
 
-    def get_employer_info(self, employer_id: str) -> Optional[Dict]:
+    def get_employer_info(self, employer_id: str) -> Optional[Dict[str, Any]]:
         """Получает информацию о компании."""
         url = f"{self.base_url}/employers/{employer_id}"
         try:
             response = requests.get(url, timeout=10)
             response.raise_for_status()
-            return response.json()
+            data: Dict[str, Any] = response.json()
+            return data
         except requests.exceptions.RequestException as e:
             print(f"❌ Ошибка при получении компании {employer_id}: {e}")
             return None
 
-    def get_employer_vacancies(self, employer_id: str, employer_name: str = "") -> List[Dict]:
+    def get_employer_vacancies(self, employer_id: str, employer_name: str = "") -> List[Dict[str, Any]]:
         """Получает все вакансии компании."""
         url = f"{self.base_url}/vacancies"
-        all_vacancies = []
+        all_vacancies: List[Dict[str, Any]] = []
         page = 0
         pages = 1
 
         print(f"📥 Получаем вакансии: {employer_name or employer_id}")
 
         while page < pages:
-            params = {
+            params: Dict[str, Any] = {
                 "employer_id": employer_id,
                 "per_page": 100,
                 "page": page,
-                "only_with_salary": True
+                "only_with_salary": True,
             }
 
             try:
                 response = requests.get(url, params=params, timeout=10)
                 response.raise_for_status()
-                data = response.json()
+                data: Dict[str, Any] = response.json()
 
                 vacancies = data.get("items", [])
                 all_vacancies.extend(vacancies)
@@ -77,11 +78,11 @@ COMPANIES = {
     "4181": "1С",
     "3776": "МТС",
     "1057": "Касперский",
-    "1455": "HeadHunter"
+    "1455": "HeadHunter",
 }
 
 
-def collect_data_from_hh():
+def collect_data_from_hh() -> tuple[int, int]:
     """Собирает данные с hh.ru и сохраняет в базу."""
     api = HeadHunterAPI()
 
@@ -89,8 +90,8 @@ def collect_data_from_hh():
     print("СБОР ДАННЫХ С HH.RU")
     print("=" * 60)
 
-    all_employers_data = []
-    all_vacancies_data = []
+    all_employers_data: List[Dict[str, Any]] = []
+    all_vacancies_data: List[Dict[str, Any]] = []
 
     # Собираем данные компаний
     print("\n📊 Получаем данные компаний:")
@@ -104,16 +105,17 @@ def collect_data_from_hh():
                 "name": employer_info.get("name", employer_name),
                 "url": employer_info.get("site_url", ""),
                 "description": employer_info.get("description", "")[:500],
-                "open_vacancies": employer_info.get("open_vacancies", 0)
+                "open_vacancies": employer_info.get("open_vacancies", 0),
             }
             all_employers_data.append(employer_data)
-            print(f"  ✅ Данные компании получены")
+            print("  ✅ Данные компании получены")
         else:
-            print(f"  ❌ Не удалось получить данные компании")
+            print("  ❌ Не удалось получить данные компании")
 
     # Сохраняем компании в БД
     try:
         from database.utils import DatabaseUtils
+
         if all_employers_data:
             DatabaseUtils.save_employers_to_db(all_employers_data)
 

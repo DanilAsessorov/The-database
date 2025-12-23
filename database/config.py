@@ -21,18 +21,17 @@ class DBConfig:
         """
         Возвращает конфигурацию для подключения к БД.
         """
-        return {
-            "database": os.getenv("DB_NAME", "hh_vacancies.db"),
-            "db_type": "sqlite"
-        }
+        return {"database": os.getenv("DB_NAME", "hh_vacancies.db"), "db_type": "sqlite"}
 
     @staticmethod
     def get_connection_string() -> str:
         """
         Формирует строку подключения для SQLite.
         """
-        # Без промежуточной переменной
-        return DBConfig.get_db_config()["database"]
+        config = DBConfig.get_db_config()
+        # Явно указываем тип возвращаемого значения
+        connection_string: str = config["database"]
+        return connection_string
 
     @staticmethod
     def check_env_variables() -> bool:
@@ -46,6 +45,6 @@ class DBConfig:
 if __name__ == "__main__":
     if DBConfig.check_env_variables():
         print("✅ Все переменные окружения заданы корректно.")
-        current_config = DBConfig.get_db_config()  # Уникальное имя
+        current_config = DBConfig.get_db_config()
         print(f"Тип БД: {current_config['db_type']}")
         print(f"Имя файла БД: {current_config['database']}")

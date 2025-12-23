@@ -7,7 +7,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from database.db_manager import DBManager
 
 
-def display_companies_and_vacancies(db: DBManager):
+def display_companies_and_vacancies(db: DBManager) -> None:
     """Показывает компании и количество вакансий."""
     print("\n" + "=" * 60)
     print("КОМПАНИИ И КОЛИЧЕСТВО ВАКАНСИЙ")
@@ -21,7 +21,7 @@ def display_companies_and_vacancies(db: DBManager):
         print("Нет данных о компаниях")
 
 
-def display_all_vacancies(db: DBManager):
+def display_all_vacancies(db: DBManager) -> None:
     """Показывает все вакансии."""
     print("\n" + "=" * 60)
     print("ВСЕ ВАКАНСИИ")
@@ -49,7 +49,7 @@ def display_all_vacancies(db: DBManager):
         print("Нет вакансий")
 
 
-def display_vacancies_by_keyword(db: DBManager):
+def display_vacancies_by_keyword(db: DBManager) -> None:
     """Ищет вакансии по ключевому слову."""
     keyword = input("\nВведите ключевое слово для поиска: ").strip()
     if not keyword:
@@ -81,7 +81,7 @@ def display_vacancies_by_keyword(db: DBManager):
         print(f"Вакансий по запросу '{keyword}' не найдено")
 
 
-def display_statistics(db: DBManager):
+def display_statistics(db: DBManager) -> None:
     """Показывает статистику."""
     print("\n" + "=" * 60)
     print("СТАТИСТИКА")
@@ -94,24 +94,25 @@ def display_statistics(db: DBManager):
     print(f"📈 Вакансий с зарплатой выше средней: {len(high_salary_vacancies)}")
 
 
-def collect_data_from_hh():
+def collect_data_from_hh() -> bool:
     """Собирает данные с hh.ru."""
     try:
         from api.hh_api import collect_data_from_hh as hh_collector
+
         print("\n⚠️  Сбор данных может занять несколько минут...")
         companies, vacancies = hh_collector()
         print(f"\n✅ Собрано: {companies} компаний, {vacancies} вакансий")
         return True
     except ImportError:
         print("❌ Модуль api.hh_api не найден")
-        print("   Создайте файл api/hh_api.py с кодом для работы с api hh.ru")
+        print("   Создайте файл api/hh_api.py с кодом для работы с API hh.ru")
         return False
     except Exception as e:
         print(f"❌ Ошибка при сборе данных: {e}")
         return False
 
 
-def main_menu():
+def main_menu() -> None:
     """Главное меню программы."""
     db = DBManager()
 

@@ -7,18 +7,20 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import sqlite3
 from typing import List, Dict, Any, Optional
 
-# Импортируем config
+# Импортируем config с другим именем
 try:
-    from database.config import DBConfig
+    from database.config import DBConfig as Config
+
+    DB_CONFIG_AVAILABLE = True
 except ImportError:
     # Если не удается импортировать, создаем простую заглушку
-    class DBConfig:
+    class Config:
         @staticmethod
         def get_db_config() -> dict:
             return {"database": "hh_vacancies.db"}
 
-
     print("⚠️  Используется упрощенная конфигурация")
+    DB_CONFIG_AVAILABLE = False
 
 
 class DatabaseUtils:
@@ -35,13 +37,15 @@ class DatabaseUtils:
             Connection object или None в случае ошибки
         """
         try:
-            config = DBConfig.get_db_config()
+            config = Config.get_db_config()
             db_path = config["database"]
             connection = sqlite3.connect(db_path)
             return connection
         except sqlite3.Error as e:
             print(f"❌ Ошибка подключения к базе данных SQLite: {e}")
             return None
+
+    # ... остальной код без изменений, убедись, что везде используется Config, а не DBConfig
 
     @staticmethod
     def save_employers_to_db(employers_data: List[Dict[str, Any]]) -> bool:
@@ -67,7 +71,7 @@ class DatabaseUtils:
 
             # SQL запрос для вставки данных в SQLite
             insert_query = """
-                INSERT OR REPLACE INTO employers 
+                INSERT OR REPLACE INTO employers
                 (hh_id, name, url, description, open_vacancies)
                 VALUES (?, ?, ?, ?, ?)
             """
@@ -80,7 +84,7 @@ class DatabaseUtils:
                     employer.get("name"),
                     employer.get("url"),
                     employer.get("description"),
-                    employer.get("open_vacancies", 0)
+                    employer.get("open_vacancies", 0),
                 )
                 prepared_data.append(row)
 
@@ -99,8 +103,7 @@ class DatabaseUtils:
             db_connection.close()
 
     @staticmethod
-    def save_vacancies_to_db(vacancies_data: List[Dict[str, Any]],
-                             employer_mapping: Dict[str, int]) -> bool:
+    def save_vacancies_to_db(vacancies_data: List[Dict[str, Any]], employer_mapping: Dict[str, int]) -> bool:
         """
         Сохраняет вакансии в базу данных SQLite.
 
@@ -153,7 +156,7 @@ class DatabaseUtils:
                     vacancy.get("area", {}).get("name") if vacancy.get("area") else None,
                     vacancy.get("experience", {}).get("name") if vacancy.get("experience") else None,
                     vacancy.get("alternate_url"),
-                    published_at
+                    published_at,
                 )
 
                 prepared_vacancies.append(prepared_vacancy)
@@ -164,8 +167,8 @@ class DatabaseUtils:
 
             # SQL запрос для вставки вакансий в SQLite
             insert_query = """
-                INSERT OR REPLACE INTO vacancies 
-                (hh_id, employer_id, title, salary_from, salary_to, currency, 
+                INSERT OR REPLACE INTO vacancies
+                (hh_id, employer_id, title, salary_from, salary_to, currency,
                  city, experience, url, published_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """

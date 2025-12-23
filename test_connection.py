@@ -13,11 +13,7 @@ def test_connection():
         print(f"\nПробуем порт {port}...")
         try:
             conn = psycopg2.connect(
-                dbname="postgres",
-                user="postgres",
-                password="",  # твой пароль
-                host="localhost",
-                port=port
+                dbname="postgres", user="postgres", password="", host="localhost", port=port  # твой пароль
             )
 
             with conn.cursor() as cur:

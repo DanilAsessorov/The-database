@@ -27,13 +27,15 @@ class DBManager:
         """
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT e.name, COUNT(v.vacancy_id) as vacancy_count
                 FROM employers e
                 LEFT JOIN vacancies v ON e.employer_id = v.employer_id
                 GROUP BY e.employer_id
                 ORDER BY vacancy_count DESC
-            """)
+            """
+            )
             return cursor.fetchall()
 
     def get_all_vacancies(self) -> List[Tuple[str, str, Optional[int], Optional[int], Optional[str], str]]:
@@ -42,8 +44,9 @@ class DBManager:
         """
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("""
-                SELECT 
+            cursor.execute(
+                """
+                SELECT
                     e.name as company_name,
                     v.title,
                     v.salary_from,
@@ -53,7 +56,8 @@ class DBManager:
                 FROM vacancies v
                 JOIN employers e ON v.employer_id = e.employer_id
                 ORDER BY e.name, v.title
-            """)
+            """
+            )
             return cursor.fetchall()
 
     def get_avg_salary(self) -> float:
@@ -62,17 +66,20 @@ class DBManager:
         """
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("""
-                SELECT 
+            cursor.execute(
+                """
+                SELECT
                     AVG((COALESCE(salary_from, 0) + COALESCE(salary_to, 0)) / 2.0) as avg_salary
                 FROM vacancies
                 WHERE salary_from IS NOT NULL OR salary_to IS NOT NULL
-            """)
+            """
+            )
             result = cursor.fetchone()
             return round(result[0] or 0, 2) if result else 0.0
 
-    def get_vacancies_with_higher_salary(self) -> List[
-        Tuple[str, str, Optional[int], Optional[int], Optional[str], str]]:
+    def get_vacancies_with_higher_salary(
+        self,
+    ) -> List[Tuple[str, str, Optional[int], Optional[int], Optional[str], str]]:
         """
         Получает вакансии с зарплатой выше средней.
         """
@@ -80,8 +87,9 @@ class DBManager:
 
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("""
-                SELECT 
+            cursor.execute(
+                """
+                SELECT
                     e.name as company_name,
                     v.title,
                     v.salary_from,
@@ -92,18 +100,22 @@ class DBManager:
                 JOIN employers e ON v.employer_id = e.employer_id
                 WHERE (COALESCE(v.salary_from, 0) + COALESCE(v.salary_to, 0)) / 2.0 > ?
                 ORDER BY (COALESCE(v.salary_from, 0) + COALESCE(v.salary_to, 0)) / 2.0 DESC
-            """, (avg_salary,))
+            """,
+                (avg_salary,),
+            )
             return cursor.fetchall()
 
-    def get_vacancies_with_keyword(self, keyword: str) -> List[
-        Tuple[str, str, Optional[int], Optional[int], Optional[str], str]]:
+    def get_vacancies_with_keyword(
+        self, keyword: str
+    ) -> List[Tuple[str, str, Optional[int], Optional[int], Optional[str], str]]:
         """
         Получает вакансии по ключевому слову.
         """
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("""
-                SELECT 
+            cursor.execute(
+                """
+                SELECT
                     e.name as company_name,
                     v.title,
                     v.salary_from,
@@ -114,7 +126,9 @@ class DBManager:
                 JOIN employers e ON v.employer_id = e.employer_id
                 WHERE LOWER(v.title) LIKE ?
                 ORDER BY e.name, v.title
-            """, (f"%{keyword.lower()}%",))
+            """,
+                (f"%{keyword.lower()}%",),
+            )
             return cursor.fetchall()
 
 
@@ -133,15 +147,17 @@ def main():
         cursor = conn.cursor()
 
         # Добавим тестовую компанию
-        cursor.execute("INSERT OR IGNORE INTO employers (hh_id, name) VALUES (?, ?)",
-                       ("test1", "Тестовая компания"))
+        cursor.execute("INSERT OR IGNORE INTO employers (hh_id, name) VALUES (?, ?)", ("test1", "Тестовая компания"))
 
         # Добавим тестовую вакансию
-        cursor.execute("""
-            INSERT OR IGNORE INTO vacancies 
+        cursor.execute(
+            """
+            INSERT OR IGNORE INTO vacancies
             (hh_id, employer_id, title, salary_from, salary_to, currency, url)
             VALUES (?, 1, ?, ?, ?, ?, ?)
-        """, ("vac1", "Python Developer", 100000, 150000, "RUR", "http://test.ru"))
+        """,
+            ("vac1", "Python Developer", 100000, 150000, "RUR", "http://test.ru"),
+        )
 
         conn.commit()
         conn.close()
@@ -161,3 +177,10 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+def main() -> None:  # Добавил -> None
+    """Тестирование DBManager."""
+    print("=" * 50)
+    print("Тестирование DBManager")
+    print("=" * 50)

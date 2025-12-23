@@ -1,5 +1,6 @@
 import sqlite3
 
+
 def create_database() -> bool:
     """Создает SQLite базу данных."""
     db_name = "hh_vacancies.db"
@@ -23,7 +24,8 @@ def create_tables() -> bool:
         cursor = conn.cursor()
 
         # Создаем таблицу employers
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS employers (
                 employer_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 hh_id TEXT UNIQUE NOT NULL,
@@ -32,10 +34,12 @@ def create_tables() -> bool:
                 description TEXT,
                 open_vacancies INTEGER DEFAULT 0
             )
-        """)
+        """
+        )
 
         # Создаем таблицу vacancies
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS vacancies (
                 vacancy_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 hh_id TEXT UNIQUE NOT NULL,
@@ -50,7 +54,8 @@ def create_tables() -> bool:
                 published_at TEXT,
                 FOREIGN KEY (employer_id) REFERENCES employers (employer_id)
             )
-        """)
+        """
+        )
 
         # Создаем индексы
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_vacancies_employer_id ON vacancies(employer_id)")
