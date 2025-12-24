@@ -1,11 +1,9 @@
 import sys
 import os
+from database.db_manager import DBManager
 
 # Добавляем корень проекта в путь поиска модулей
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from database.db_manager import DBManager
-
 
 def display_companies_and_vacancies(db: DBManager) -> None:
     """Показывает компании и количество вакансий."""
