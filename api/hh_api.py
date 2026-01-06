@@ -1,20 +1,20 @@
-import requests
-from typing import Dict, List, Optional
-import time
-import sys
 import os
+import sys
+import time
+from typing import Any, Dict, List, Optional
 
-# Добавляем корень проекта в путь поиска модулей
+import requests
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 class HeadHunterAPI:
     """Класс для работы с API hh.ru."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.base_url = "https://api.hh.ru"
 
-    def get_employer_info(self, employer_id: str) -> Optional[Dict]:
+    def get_employer_info(self, employer_id: str) -> Optional[Dict[str, Any]]:
         """Получает информацию о компании."""
         url = f"{self.base_url}/employers/{employer_id}"
         try:
@@ -25,7 +25,7 @@ class HeadHunterAPI:
             print(f"❌ Ошибка при получении компании {employer_id}: {e}")
             return None
 
-    def get_employer_vacancies(self, employer_id: str, employer_name: str = "") -> List[Dict]:
+    def get_employer_vacancies(self, employer_id: str, employer_name: str = "") -> List[Dict[str, Any]]:
         """Получает все вакансии компании."""
         url = f"{self.base_url}/vacancies"
         all_vacancies = []
@@ -39,7 +39,7 @@ class HeadHunterAPI:
                 "employer_id": employer_id,
                 "per_page": 100,
                 "page": page,
-                "only_with_salary": True
+                "only_with_salary": True,
             }
 
             try:
@@ -55,7 +55,7 @@ class HeadHunterAPI:
 
                 print(f"  📄 Страница {page + 1}/{pages}, найдено: {found}")
 
-                time.sleep(0.1)  # Пауза, чтобы не перегружать API
+                time.sleep(0.1)
                 page += 1
 
             except requests.exceptions.RequestException as e:
@@ -77,16 +77,16 @@ COMPANIES = {
     "4181": "1С",
     "3776": "МТС",
     "1057": "Касперский",
-    "1455": "HeadHunter"
+    "1455": "HeadHunter",
 }
 
 
-def collect_data_from_hh():
-    """Собирает данные с hh.ru и сохраняет в базу."""
+def collect_data_from_hh() -> tuple[int, int]:
+    """Собирает данные с hh.ru и сохраняет в PostgreSQL."""
     api = HeadHunterAPI()
 
     print("=" * 60)
-    print("СБОР ДАННЫХ С HH.RU")
+    print("СБОР ДАННЫХ С HH.RU (PostgreSQL)")
     print("=" * 60)
 
     all_employers_data = []
@@ -104,16 +104,22 @@ def collect_data_from_hh():
                 "name": employer_info.get("name", employer_name),
                 "url": employer_info.get("site_url", ""),
                 "description": employer_info.get("description", "")[:500],
-                "open_vacancies": employer_info.get("open_vacancies", 0)
+                "open_vacancies": employer_info.get("open_vacancies", 0),
             }
             all_employers_data.append(employer_data)
-            print(f"  ✅ Данные компании получены")
+            print("  ✅ Данные компании получены")
         else:
-            print(f"  ❌ Не удалось получить данные компании")
+            print("  ❌ Не удалось получить данные компании")
 
-    # Сохраняем компании в БД
+    # Сохраняем компании в БД PostgreSQL
     try:
+        from database.config import DBConfig
         from database.utils import DatabaseUtils
+
+        # Проверяем конфигурацию PostgreSQL
+        if not DBConfig.check_config():
+            return 0, 0
+
         if all_employers_data:
             DatabaseUtils.save_employers_to_db(all_employers_data)
 
@@ -126,7 +132,7 @@ def collect_data_from_hh():
             vacancies = api.get_employer_vacancies(employer_id, employer_name)
             all_vacancies_data.extend(vacancies)
 
-        # Сохраняем вакансии в БД
+        # Сохраняем вакансии в БД PostgreSQL
         if all_vacancies_data:
             DatabaseUtils.save_vacancies_to_db(all_vacancies_data, employer_mapping)
 
@@ -138,9 +144,8 @@ def collect_data_from_hh():
 
         return len(all_employers_data), len(all_vacancies_data)
 
-    except ImportError:
-        print("❌ Не удалось импортировать DatabaseUtils")
-        print("   Убедитесь, что файл database/utils.py существует")
+    except ImportError as e:
+        print(f"❌ Не удалось импортировать модули: {e}")
         return 0, 0
     except Exception as e:
         print(f"❌ Ошибка при сохранении в БД: {e}")

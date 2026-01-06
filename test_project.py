@@ -1,8 +1,9 @@
 import sys
 import os
 
+
 # Добавляем текущую директорию в путь поиска модулей
-sys.path.append('.')
+sys.path.append(".")
 
 
 def test_database_config():
@@ -13,6 +14,7 @@ def test_database_config():
 
     try:
         from database.config import DBConfig
+
         config = DBConfig.get_db_config()
         print(f"✅ Конфигурация загружена: {config['database']}")
         return True
@@ -53,6 +55,7 @@ def test_database_connection():
 
     try:
         from database.utils import DatabaseUtils
+
         connection = DatabaseUtils.get_db_connection()
         if connection:
             # Проверяем, что таблицы существуют
@@ -60,8 +63,8 @@ def test_database_connection():
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
             tables = cursor.fetchall()
 
-            print(f"✅ Подключение к БД успешно")
-            print(f"✅ Найдено таблиц: {len(tables)}")
+            print("✅ Подключение к БД успешно")
+            print("✅ Найдено таблиц: {len(tables)}")
             for table in tables:
                 print(f"   - {table[0]}")
 
@@ -89,7 +92,7 @@ def test_file_structure():
         "database/models.py",
         "database/utils.py",
         ".env",
-        "requirements.txt"
+        "requirements.txt",
     ]
 
     all_ok = True
@@ -114,7 +117,7 @@ def main():
         ("Структура проекта", test_file_structure()),
         ("Конфигурация БД", test_database_config()),
         ("Создание БД", test_database_creation()),
-        ("Подключение к БД", test_database_connection())
+        ("Подключение к БД", test_database_connection()),
     ]
 
     # Итоги
