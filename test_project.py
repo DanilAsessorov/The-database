@@ -1,6 +1,6 @@
 import sys
 import os
-from typing import Tuple, List
+
 
 # Добавляем текущую директорию в путь поиска модулей
 sys.path.append(".")

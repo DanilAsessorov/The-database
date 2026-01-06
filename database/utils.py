@@ -1,221 +1,213 @@
-import sys
-import os
+from typing import Any, Dict, List, Optional
 
-# Добавляем корень проекта в путь поиска модулей
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import psycopg
 
-import sqlite3
-from typing import List, Dict, Any, Optional
-
-# Импортируем config с другим именем
-try:
-    from database.config import DBConfig as Config
-
-    DB_CONFIG_AVAILABLE = True
-except ImportError:
-    # Если не удается импортировать, создаем простую заглушку
-    class Config:
-        @staticmethod
-        def get_db_config() -> dict:
-            return {"database": "hh_vacancies.db"}
-
-    print("⚠️  Используется упрощенная конфигурация")
-    DB_CONFIG_AVAILABLE = False
+from database.config import DBConfig
 
 
 class DatabaseUtils:
-    """
-    Вспомогательный класс для операций с базой данных SQLite.
-    """
+    """Утилиты для работы с PostgreSQL."""
 
     @staticmethod
-    def get_db_connection() -> Optional[sqlite3.Connection]:
-        """
-        Устанавливает соединение с базой данных SQLite.
-
-        Returns:
-            Connection object или None в случае ошибки
-        """
+    def get_db_connection() -> Optional[psycopg.Connection]:
+        """Создает соединение с PostgreSQL."""
+        db_config = None
         try:
-            config = Config.get_db_config()
-            db_path = config["database"]
-            connection = sqlite3.connect(db_path)
-            return connection
-        except sqlite3.Error as e:
-            print(f"❌ Ошибка подключения к базе данных SQLite: {e}")
-            return None
+            db_config = DBConfig.get_db_config()
 
-    # ... остальной код без изменений, убедись, что везде используется Config, а не DBConfig
+            # Проверяем обязательные параметры подключения
+            required_fields = ["dbname", "user", "host"]
+            missing_fields = [field for field in required_fields if not db_config.get(field)]
+
+            if missing_fields:
+                print(f"❌ Отсутствуют обязательные параметры: {', '.join(missing_fields)}")
+                return None
+
+            connection = psycopg.connect(**db_config)
+            return connection
+
+        except psycopg.OperationalError as error:
+            print(f"❌ Ошибка подключения к PostgreSQL: {error}")
+            if db_config:
+                print(f"   Проверьте доступность сервера: {db_config.get('host')}:{db_config.get('port')}")
+            return None
+        except psycopg.Error as error:
+            print(f"❌ Ошибка PostgreSQL: {error}")
+            return None
 
     @staticmethod
     def save_employers_to_db(employers_data: List[Dict[str, Any]]) -> bool:
-        """
-        Сохраняет данные компаний в базу данных SQLite.
-
-        Args:
-            employers_data: Список словарей с данными компаний
-
-        Returns:
-            bool: True если сохранение прошло успешно
-        """
+        """Сохраняет компании в БД."""
         if not employers_data:
-            print("❌ Нет данных для сохранения")
+            print("⚠️  Нет данных компаний для сохранения")
             return False
 
-        db_connection = DatabaseUtils.get_db_connection()
-        if not db_connection:
+        connection = DatabaseUtils.get_db_connection()
+        if not connection:
             return False
 
         try:
-            cursor = db_connection.cursor()
+            saved_count = 0
+            with connection.cursor() as cursor:
+                # Упрощенный запрос
+                insert_query = """
+                    INSERT INTO employers (hh_id, name, url, description, open_vacancies)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT (hh_id) DO UPDATE SET
+                        name = EXCLUDED.name,
+                        url = EXCLUDED.url,
+                        description = EXCLUDED.description,
+                        open_vacancies = EXCLUDED.open_vacancies
+                """
 
-            # SQL запрос для вставки данных в SQLite
-            insert_query = """
-                INSERT OR REPLACE INTO employers
-                (hh_id, name, url, description, open_vacancies)
-                VALUES (?, ?, ?, ?, ?)
-            """
+                for employer in employers_data:
+                    try:
+                        cursor.execute(
+                            insert_query,
+                            (
+                                employer.get("hh_id"),
+                                employer.get("name"),
+                                employer.get("url", ""),
+                                employer.get("description", "")[:500],
+                                employer.get("open_vacancies", 0),
+                            ),
+                        )
+                        saved_count += 1
+                    except psycopg.Error as error:
+                        print(f"⚠️  Ошибка при сохранении компании {employer.get('name')}: {error}")
+                        continue
 
-            # Подготавливаем данные для вставки
-            prepared_data = []
-            for employer in employers_data:
-                row = (
-                    employer.get("hh_id"),
-                    employer.get("name"),
-                    employer.get("url"),
-                    employer.get("description"),
-                    employer.get("open_vacancies", 0),
-                )
-                prepared_data.append(row)
+            connection.commit()
+            print(f"✅ Сохранено компаний: {saved_count} из {len(employers_data)}")
+            return saved_count > 0
 
-            # Пакетная вставка
-            cursor.executemany(insert_query, prepared_data)
-
-            db_connection.commit()
-            print(f"✅ Сохранено компаний: {len(prepared_data)}")
-            return True
-
-        except sqlite3.Error as e:
-            print(f"❌ Ошибка при сохранении компаний: {e}")
-            db_connection.rollback()
+        except psycopg.Error as error:
+            print(f"❌ Ошибка при сохранении компаний: {error}")
+            connection.rollback()
             return False
         finally:
-            db_connection.close()
+            connection.close()
 
     @staticmethod
     def save_vacancies_to_db(vacancies_data: List[Dict[str, Any]], employer_mapping: Dict[str, int]) -> bool:
-        """
-        Сохраняет вакансии в базу данных SQLite.
-
-        Args:
-            vacancies_data: Список словарей с данными вакансий
-            employer_mapping: Словарь соответствия hh_id компании -> employer_id в БД
-
-        Returns:
-            bool: True если сохранение прошло успешно
-        """
+        """Сохраняет вакансии в БД."""
         if not vacancies_data:
-            print("❌ Нет вакансий для сохранения")
+            print("⚠️  Нет данных вакансий для сохранения")
             return False
 
-        db_connection = DatabaseUtils.get_db_connection()
-        if not db_connection:
+        if not employer_mapping:
+            print("⚠️  Отсутствует маппинг компаний")
+            return False
+
+        connection = DatabaseUtils.get_db_connection()
+        if not connection:
             return False
 
         try:
-            cursor = db_connection.cursor()
+            saved_count = 0
+            skipped_count = 0
 
-            # Подготавливаем данные для вставки
-            prepared_vacancies = []
+            with connection.cursor() as cursor:
+                insert_query = """
+                    INSERT INTO vacancies
+                    (hh_id, employer_id, title, salary_from, salary_to, currency,
+                     city, experience, url, published_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (hh_id) DO UPDATE SET
+                        employer_id = EXCLUDED.employer_id,
+                        title = EXCLUDED.title,
+                        salary_from = EXCLUDED.salary_from,
+                        salary_to = EXCLUDED.salary_to,
+                        currency = EXCLUDED.currency,
+                        city = EXCLUDED.city,
+                        experience = EXCLUDED.experience,
+                        url = EXCLUDED.url,
+                        published_at = EXCLUDED.published_at
+                """
 
-            for vacancy in vacancies_data:
-                employer_hh_id = vacancy.get("employer", {}).get("id")
-                if not employer_hh_id:
-                    continue
+                for vacancy in vacancies_data:
+                    # Получаем employer_hh_id
+                    employer_hh_id = None
+                    if "employer" in vacancy:
+                        employer_hh_id = vacancy.get("employer", {}).get("id")
+                    elif "employer_id" in vacancy:
+                        employer_hh_id = vacancy.get("employer_id")
 
-                employer_id = employer_mapping.get(str(employer_hh_id))
-                if not employer_id:
-                    continue
+                    if not employer_hh_id:
+                        skipped_count += 1
+                        continue
 
-                # Обработка зарплаты
-                salary_info = vacancy.get("salary")
-                salary_from = salary_info.get("from") if salary_info else None
-                salary_to = salary_info.get("to") if salary_info else None
-                currency = salary_info.get("currency") if salary_info else None
+                    employer_id = employer_mapping.get(str(employer_hh_id))
+                    if not employer_id:
+                        skipped_count += 1
+                        continue
 
-                # Обработка даты публикации
-                published_at = vacancy.get("published_at")
+                    salary_info = vacancy.get("salary") or {}
 
-                prepared_vacancy = (
-                    vacancy.get("id"),
-                    employer_id,
-                    vacancy.get("name"),
-                    salary_from,
-                    salary_to,
-                    currency,
-                    vacancy.get("area", {}).get("name") if vacancy.get("area") else None,
-                    vacancy.get("experience", {}).get("name") if vacancy.get("experience") else None,
-                    vacancy.get("alternate_url"),
-                    published_at,
-                )
+                    try:
+                        cursor.execute(
+                            insert_query,
+                            (
+                                vacancy.get("id"),
+                                employer_id,
+                                vacancy.get("name", "")[:500],
+                                salary_info.get("from"),
+                                salary_info.get("to"),
+                                salary_info.get("currency"),
+                                vacancy.get("area", {}).get("name") if vacancy.get("area") else None,
+                                vacancy.get("experience", {}).get("name") if vacancy.get("experience") else None,
+                                vacancy.get("alternate_url") or vacancy.get("url", ""),
+                                vacancy.get("published_at"),
+                            ),
+                        )
+                        saved_count += 1
 
-                prepared_vacancies.append(prepared_vacancy)
+                        if saved_count % 50 == 0:
+                            connection.commit()
+                            print(f"  💾 Промежуточное сохранение: {saved_count} вакансий")
 
-            if not prepared_vacancies:
-                print("❌ Нет вакансий с корректными данными для сохранения")
-                return False
+                    except psycopg.Error as error:
+                        print(f"⚠️  Ошибка при сохранении вакансии: {error}")
+                        continue
 
-            # SQL запрос для вставки вакансий в SQLite
-            insert_query = """
-                INSERT OR REPLACE INTO vacancies
-                (hh_id, employer_id, title, salary_from, salary_to, currency,
-                 city, experience, url, published_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """
+            connection.commit()
+            print(f"✅ Сохранено вакансий: {saved_count} из {len(vacancies_data)}")
+            if skipped_count > 0:
+                print(f"⚠️  Пропущено вакансий: {skipped_count}")
+            return saved_count > 0
 
-            # Пакетная вставка
-            cursor.executemany(insert_query, prepared_vacancies)
-
-            db_connection.commit()
-            print(f"✅ Сохранено вакансий: {len(prepared_vacancies)}")
-            return True
-
-        except sqlite3.Error as e:
-            print(f"❌ Ошибка при сохранении вакансий: {e}")
-            db_connection.rollback()
+        except psycopg.Error as error:
+            print(f"❌ Ошибка при сохранении вакансий: {error}")
+            connection.rollback()
             return False
         finally:
-            db_connection.close()
+            connection.close()
 
     @staticmethod
     def get_employer_mapping() -> Dict[str, int]:
-        """
-        Получает словарь соответствия hh_id -> employer_id из базы данных SQLite.
-
-        Returns:
-            Dict[str, int]: Словарь с соответствиями ID
-        """
-        db_connection = DatabaseUtils.get_db_connection()
-        if not db_connection:
+        """Получает маппинг hh_id -> employer_id."""
+        connection = DatabaseUtils.get_db_connection()
+        if not connection:
             return {}
 
         try:
-            cursor = db_connection.cursor()
-            cursor.execute("SELECT hh_id, employer_id FROM employers")
-            mapping = {str(hh_id): employer_id for hh_id, employer_id in cursor.fetchall()}
-            return mapping
-        except sqlite3.Error as e:
-            print(f"❌ Ошибка при получении данных компаний: {e}")
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT hh_id, employer_id FROM employers")
+                results = cursor.fetchall()
+                mapping = {str(hh_id): employer_id for hh_id, employer_id in results}
+                return mapping
+        except psycopg.Error as error:
+            print(f"❌ Ошибка при получении маппинга: {error}")
             return {}
         finally:
-            db_connection.close()
+            connection.close()
 
 
 if __name__ == "__main__":
     # Тестируем подключение
-    connection = DatabaseUtils.get_db_connection()
-    if connection:
-        print("✅ Подключение к базе данных SQLite успешно")
-        connection.close()
+    test_connection = DatabaseUtils.get_db_connection()
+    if test_connection:
+        print("✅ Подключение к PostgreSQL успешно")
+        test_connection.close()
     else:
-        print("❌ Не удалось подключиться к базе данных")
+        print("❌ Не удалось подключиться к PostgreSQL")

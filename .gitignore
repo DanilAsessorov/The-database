@@ -1,3 +1,4 @@
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
@@ -8,8 +9,23 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+
+# Project
 *.db
 *.sqlite3
-.DS_Store
 .env
-.idea
+*.bat
+*.ps1
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

@@ -1,81 +1,89 @@
-import sqlite3
-from typing import List, Tuple, Optional
+from typing import List, Optional, Tuple
+
+import psycopg
+
+from database.config import DBConfig
 
 
 class DBManager:
     """
-    Класс для работы с базой данных.
+    Класс для работы с базой данных PostgreSQL.
     Реализует все требуемые методы по заданию.
     """
 
-    def __init__(self, db_path: str = "hh_vacancies.db"):
+    def __init__(self):
         """
         Инициализация менеджера БД.
-
-        Args:
-            db_path: Путь к файлу БД SQLite
+        Использует конфигурацию из DBConfig.
         """
-        self.db_path = db_path
+        self.config = DBConfig.get_db_config()
 
-    def _get_connection(self) -> sqlite3.Connection:
-        """Возвращает соединение с базой данных."""
-        return sqlite3.connect(self.db_path)
+    def _get_connection(self) -> psycopg.Connection:
+        """Возвращает соединение с базой данных PostgreSQL."""
+        return psycopg.connect(**self.config)
 
     def get_companies_and_vacancies_count(self) -> List[Tuple[str, int]]:
         """
         Получает список всех компаний и количество вакансий у каждой компании.
         """
         with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT e.name, COUNT(v.vacancy_id) as vacancy_count
+                    FROM employers e
+                    LEFT JOIN vacancies v ON e.employer_id = v.employer_id
+                    GROUP BY e.employer_id, e.name
+                    ORDER BY vacancy_count DESC
                 """
-                SELECT e.name, COUNT(v.vacancy_id) as vacancy_count
-                FROM employers e
-                LEFT JOIN vacancies v ON e.employer_id = v.employer_id
-                GROUP BY e.employer_id
-                ORDER BY vacancy_count DESC
-            """
-            )
-            return cursor.fetchall()
+                )
+                return cursor.fetchall()
 
     def get_all_vacancies(self) -> List[Tuple[str, str, Optional[int], Optional[int], Optional[str], str]]:
         """
         Получает список всех вакансий.
         """
         with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT
+                        e.name as company_name,
+                        v.title,
+                        v.salary_from,
+                        v.salary_to,
+                        v.currency,
+                        v.url
+                    FROM vacancies v
+                    JOIN employers e ON v.employer_id = e.employer_id
+                    ORDER BY e.name, v.title
                 """
-                SELECT
-                    e.name as company_name,
-                    v.title,
-                    v.salary_from,
-                    v.salary_to,
-                    v.currency,
-                    v.url
-                FROM vacancies v
-                JOIN employers e ON v.employer_id = e.employer_id
-                ORDER BY e.name, v.title
-            """
-            )
-            return cursor.fetchall()
+                )
+                return cursor.fetchall()
 
     def get_avg_salary(self) -> float:
         """
         Получает среднюю зарплату по вакансиям.
         """
         with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT AVG(
+                        CASE
+                            WHEN salary_from IS NOT NULL AND salary_to IS NOT NULL
+                            THEN (salary_from + salary_to) / 2.0
+                            WHEN salary_from IS NOT NULL THEN salary_from::float
+                            WHEN salary_to IS NOT NULL THEN salary_to::float
+                            ELSE NULL
+                        END
+                    ) as avg_salary
+                    FROM vacancies
+                    WHERE salary_from IS NOT NULL OR salary_to IS NOT NULL
                 """
-                SELECT
-                    AVG((COALESCE(salary_from, 0) + COALESCE(salary_to, 0)) / 2.0) as avg_salary
-                FROM vacancies
-                WHERE salary_from IS NOT NULL OR salary_to IS NOT NULL
-            """
-            )
-            result = cursor.fetchone()
-            return round(result[0] or 0, 2) if result else 0.0
+                )
+                result = cursor.fetchone()
+                return round(float(result[0] or 0), 2) if result else 0.0
 
     def get_vacancies_with_higher_salary(
         self,
@@ -86,24 +94,40 @@ class DBManager:
         avg_salary = self.get_avg_salary()
 
         with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                SELECT
-                    e.name as company_name,
-                    v.title,
-                    v.salary_from,
-                    v.salary_to,
-                    v.currency,
-                    v.url
-                FROM vacancies v
-                JOIN employers e ON v.employer_id = e.employer_id
-                WHERE (COALESCE(v.salary_from, 0) + COALESCE(v.salary_to, 0)) / 2.0 > ?
-                ORDER BY (COALESCE(v.salary_from, 0) + COALESCE(v.salary_to, 0)) / 2.0 DESC
-            """,
-                (avg_salary,),
-            )
-            return cursor.fetchall()
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT
+                        e.name as company_name,
+                        v.title,
+                        v.salary_from,
+                        v.salary_to,
+                        v.currency,
+                        v.url
+                    FROM vacancies v
+                    JOIN employers e ON v.employer_id = e.employer_id
+                    WHERE (
+                        CASE
+                            WHEN salary_from IS NOT NULL AND salary_to IS NOT NULL
+                            THEN (salary_from + salary_to) / 2.0
+                            WHEN salary_from IS NOT NULL THEN salary_from::float
+                            WHEN salary_to IS NOT NULL THEN salary_to::float
+                            ELSE 0
+                        END
+                    ) > %s
+                    ORDER BY (
+                        CASE
+                            WHEN salary_from IS NOT NULL AND salary_to IS NOT NULL
+                            THEN (salary_from + salary_to) / 2.0
+                            WHEN salary_from IS NOT NULL THEN salary_from::float
+                            WHEN salary_to IS NOT NULL THEN salary_to::float
+                            ELSE 0
+                        END
+                    ) DESC
+                """,
+                    (avg_salary,),
+                )
+                return cursor.fetchall()
 
     def get_vacancies_with_keyword(
         self, keyword: str
@@ -112,75 +136,72 @@ class DBManager:
         Получает вакансии по ключевому слову.
         """
         with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                SELECT
-                    e.name as company_name,
-                    v.title,
-                    v.salary_from,
-                    v.salary_to,
-                    v.currency,
-                    v.url
-                FROM vacancies v
-                JOIN employers e ON v.employer_id = e.employer_id
-                WHERE LOWER(v.title) LIKE ?
-                ORDER BY e.name, v.title
-            """,
-                (f"%{keyword.lower()}%",),
-            )
-            return cursor.fetchall()
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT
+                        e.name as company_name,
+                        v.title,
+                        v.salary_from,
+                        v.salary_to,
+                        v.currency,
+                        v.url
+                    FROM vacancies v
+                    JOIN employers e ON v.employer_id = e.employer_id
+                    WHERE v.title ILIKE %s
+                    ORDER BY e.name, v.title
+                """,
+                    (f"%{keyword}%",),
+                )
+                return cursor.fetchall()
+
+    def get_employers_count(self) -> int:
+        """Количество компаний в БД."""
+        with self._get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT COUNT(*) FROM employers")
+                return cursor.fetchone()[0]
+
+    def get_vacancies_count(self) -> int:
+        """Количество вакансий в БД."""
+        with self._get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT COUNT(*) FROM vacancies")
+                return cursor.fetchone()[0]
 
 
-def main():
-    """Тестирование DBManager."""
-    print("=" * 50)
-    print("Тестирование DBManager")
+def test_db_manager():
+    """Тестирование методов DBManager."""
+    print("\n" + "=" * 50)
+    print("ТЕСТИРОВАНИЕ DBManager (PostgreSQL)")
     print("=" * 50)
 
     try:
         db = DBManager()
-        print(f"✅ DBManager инициализирован для БД: {db.db_path}")
 
-        # Создадим тестовые данные
-        conn = sqlite3.connect(db.db_path)
-        cursor = conn.cursor()
+        print(f"✅ Компаний в БД: {db.get_employers_count()}")
+        print(f"✅ Вакансий в БД: {db.get_vacancies_count()}")
 
-        # Добавим тестовую компанию
-        cursor.execute("INSERT OR IGNORE INTO employers (hh_id, name) VALUES (?, ?)", ("test1", "Тестовая компания"))
+        companies = db.get_companies_and_vacancies_count()
+        print(f"✅ Компаний с вакансиями: {len(companies)}")
 
-        # Добавим тестовую вакансию
-        cursor.execute(
-            """
-            INSERT OR IGNORE INTO vacancies
-            (hh_id, employer_id, title, salary_from, salary_to, currency, url)
-            VALUES (?, 1, ?, ?, ?, ?, ?)
-        """,
-            ("vac1", "Python Developer", 100000, 150000, "RUR", "http://test.ru"),
-        )
+        vacancies = db.get_all_vacancies()
+        print(f"✅ Всего вакансий: {len(vacancies)}")
 
-        conn.commit()
-        conn.close()
+        avg_salary = db.get_avg_salary()
+        print(f"✅ Средняя зарплата: {avg_salary}")
 
-        # Тестируем методы
-        print(f"✅ Компании и вакансии: {len(db.get_companies_and_vacancies_count())}")
-        print(f"✅ Все вакансии: {len(db.get_all_vacancies())}")
-        print(f"✅ Средняя зарплата: {db.get_avg_salary()}")
-        print(f"✅ Вакансии с зарплатой выше средней: {len(db.get_vacancies_with_higher_salary())}")
-        print(f"✅ Вакансии с ключевым словом 'Python': {len(db.get_vacancies_with_keyword('Python'))}")
+        high_salary = db.get_vacancies_with_higher_salary()
+        print(f"✅ Вакансий с з/п выше средней: {len(high_salary)}")
 
-        print("\n🎉 Все 5 методов DBManager работают!")
+        python_vacancies = db.get_vacancies_with_keyword("python")
+        print(f"✅ Вакансий с 'python': {len(python_vacancies)}")
+
+        print("\n🎉 Все методы DBManager работают с PostgreSQL!")
 
     except Exception as e:
         print(f"❌ Ошибка: {e}")
 
 
 if __name__ == "__main__":
-    main()
-
-
-def main() -> None:  # Добавил -> None
-    """Тестирование DBManager."""
-    print("=" * 50)
-    print("Тестирование DBManager")
-    print("=" * 50)
+    test_db_manager()

@@ -1,10 +1,10 @@
-import requests
-from typing import Dict, List, Optional, Any
-import time
-import sys
 import os
+import sys
+import time
+from typing import Any, Dict, List, Optional
 
-# Добавляем корень проекта в путь поиска модулей
+import requests
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
@@ -20,8 +20,7 @@ class HeadHunterAPI:
         try:
             response = requests.get(url, timeout=10)
             response.raise_for_status()
-            data: Dict[str, Any] = response.json()
-            return data
+            return response.json()
         except requests.exceptions.RequestException as e:
             print(f"❌ Ошибка при получении компании {employer_id}: {e}")
             return None
@@ -29,14 +28,14 @@ class HeadHunterAPI:
     def get_employer_vacancies(self, employer_id: str, employer_name: str = "") -> List[Dict[str, Any]]:
         """Получает все вакансии компании."""
         url = f"{self.base_url}/vacancies"
-        all_vacancies: List[Dict[str, Any]] = []
+        all_vacancies = []
         page = 0
         pages = 1
 
         print(f"📥 Получаем вакансии: {employer_name or employer_id}")
 
         while page < pages:
-            params: Dict[str, Any] = {
+            params = {
                 "employer_id": employer_id,
                 "per_page": 100,
                 "page": page,
@@ -46,7 +45,7 @@ class HeadHunterAPI:
             try:
                 response = requests.get(url, params=params, timeout=10)
                 response.raise_for_status()
-                data: Dict[str, Any] = response.json()
+                data = response.json()
 
                 vacancies = data.get("items", [])
                 all_vacancies.extend(vacancies)
@@ -56,7 +55,7 @@ class HeadHunterAPI:
 
                 print(f"  📄 Страница {page + 1}/{pages}, найдено: {found}")
 
-                time.sleep(0.1)  # Пауза, чтобы не перегружать API
+                time.sleep(0.1)
                 page += 1
 
             except requests.exceptions.RequestException as e:
@@ -83,15 +82,15 @@ COMPANIES = {
 
 
 def collect_data_from_hh() -> tuple[int, int]:
-    """Собирает данные с hh.ru и сохраняет в базу."""
+    """Собирает данные с hh.ru и сохраняет в PostgreSQL."""
     api = HeadHunterAPI()
 
     print("=" * 60)
-    print("СБОР ДАННЫХ С HH.RU")
+    print("СБОР ДАННЫХ С HH.RU (PostgreSQL)")
     print("=" * 60)
 
-    all_employers_data: List[Dict[str, Any]] = []
-    all_vacancies_data: List[Dict[str, Any]] = []
+    all_employers_data = []
+    all_vacancies_data = []
 
     # Собираем данные компаний
     print("\n📊 Получаем данные компаний:")
@@ -112,9 +111,14 @@ def collect_data_from_hh() -> tuple[int, int]:
         else:
             print("  ❌ Не удалось получить данные компании")
 
-    # Сохраняем компании в БД
+    # Сохраняем компании в БД PostgreSQL
     try:
+        from database.config import DBConfig
         from database.utils import DatabaseUtils
+
+        # Проверяем конфигурацию PostgreSQL
+        if not DBConfig.check_config():
+            return 0, 0
 
         if all_employers_data:
             DatabaseUtils.save_employers_to_db(all_employers_data)
@@ -128,7 +132,7 @@ def collect_data_from_hh() -> tuple[int, int]:
             vacancies = api.get_employer_vacancies(employer_id, employer_name)
             all_vacancies_data.extend(vacancies)
 
-        # Сохраняем вакансии в БД
+        # Сохраняем вакансии в БД PostgreSQL
         if all_vacancies_data:
             DatabaseUtils.save_vacancies_to_db(all_vacancies_data, employer_mapping)
 
@@ -140,9 +144,8 @@ def collect_data_from_hh() -> tuple[int, int]:
 
         return len(all_employers_data), len(all_vacancies_data)
 
-    except ImportError:
-        print("❌ Не удалось импортировать DatabaseUtils")
-        print("   Убедитесь, что файл database/utils.py существует")
+    except ImportError as e:
+        print(f"❌ Не удалось импортировать модули: {e}")
         return 0, 0
     except Exception as e:
         print(f"❌ Ошибка при сохранении в БД: {e}")
